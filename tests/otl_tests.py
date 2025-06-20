@@ -8,7 +8,7 @@ from scipy.spatial.transform import Rotation as R
 #add shower axis
 zenith = np.radians(90.)
 azimuth = 0
-dca = 20000.
+dca = 15000.
 
 sim = ch.ShowerSimulation()
 sim.add(ch.OverLimbAxis(zenith,azimuth,curved=True,ground_level=dca))
@@ -42,7 +42,7 @@ sim.add(ch.UserShower(X,nch))
 sim.add(ch.Yield(270,1000,N_bins=1))
 
 #run simulation
-sig = sim.run(mesh=False, att=False)
+sig = sim.run(mesh=False, att=True)
 photons = sig.photons.sum(axis=1)
 
 #plot signal at each detector
@@ -73,8 +73,9 @@ ax = fig.add_subplot(111,projection='3d')
 ax.scatter(sig.source_points[:,0],sig.source_points[:,1],sig.source_points[:,2],c='r', s=100*photon_sum/photon_sum.max(), alpha=0.2)
 ax.scatter(xx,yy,zz,c='k',label='counters')
 ax.plot_surface(x_surf,y_surf,z_surf)
-ax.set_aspect('equal')
-# ax.set_zlim(-1.e5,1.e5)
+ax.set_zlim(-1.e6,1.e6)
 ax.set_xlabel('x (m)')
 ax.set_ylabel('y (m)')
 ax.set_zlabel('z (m)')
+ax.set_aspect('equal')
+
