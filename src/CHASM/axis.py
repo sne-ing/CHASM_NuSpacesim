@@ -12,7 +12,6 @@ from functools import cached_property
 from .atmosphere import Atmosphere
 from .generate_Cherenkov import MakeYield
 from .shower import Shower
-from .config import AxisConfig
 
 class Counters(ABC):
     '''This is the class containing the neccessary methods for finding the
@@ -368,8 +367,7 @@ class Axis(ABC):
 
     def __init__(self, params: AxisParams):
         self.params = params
-        self.config = AxisConfig()
-        self.atm = self.config.ATM
+        self.atm = self.params.ATM
         self.ground_level = params.ground_level
         self.zenith = params.zenith
         self.azimuth = params.azimuth
@@ -418,7 +416,7 @@ class Axis(ABC):
 
     def set_initial_altitude(self) -> np.ndarray:
         '''altitude property definition'''
-        return np.linspace(self.ground_level, self.maximum_altitude, self.config.N_POINTS)
+        return np.linspace(self.ground_level, self.maximum_altitude, self.params.N_POINTS)
 
     @property
     def dh(self) -> np.ndarray:
@@ -769,7 +767,7 @@ class MeshAxis(Axis):
         self.lX_interval = lX_interval
         self.lX = np.mean(lX_interval)
         self.linear_axis = linear_axis
-        self.config = linear_axis.config
+        self.params = linear_axis.params
         self.atm = linear_axis.atm
         self.zenith = linear_axis.zenith
         self.azimuth = linear_axis.azimuth
@@ -778,8 +776,8 @@ class MeshAxis(Axis):
         mesh, self.nch, self._t, self._d, self._dr, self._a  = axis_to_mesh(self.lX, 
                                                                             self.linear_axis, 
                                                                             self.shower,
-                                                                            N_ring=self.config.N_IN_RING)
-        self.meshX = np.repeat(self.X,self.config.N_IN_RING)
+                                                                            N_ring=self.params.N_IN_RING)
+        self.meshX = np.repeat(self.X,self.params.N_IN_RING)
         self.rotated_mesh = rotate_mesh(mesh, linear_axis.zenith, linear_axis.azimuth)
 
     @property
@@ -934,8 +932,8 @@ class MakeUpwardAxis(Axis):
         occurs on the axis. We dont need to run universality calculations where
         there's no shower.
         '''
-        # ids = shower.profile(self.X) >= self.config.MIN_CHARGED_PARTICLES
-        ids = shower.profile(self.X) >= self.config.MIN_CHARGED_PARTICLES * shower.N_max
+        # ids = shower.profile(self.X) >= self.params.MIN_CHARGED_PARTICLES
+        ids = shower.profile(self.X) >= self.params.MIN_CHARGED_PARTICLES * shower.N_max
         self.altitude = self.altitude[np.argmax(ids):]
         self.X = self.X[np.argmax(ids):]
 
@@ -1043,8 +1041,8 @@ class MakeDownwardAxis(Axis):
         occurs on the axis. We dont need to run universality calculations where
         there's no shower.self
         '''
-        # ids = shower.profile(self.X) >= self.config.MIN_CHARGED_PARTICLES
-        ids = shower.profile(self.X) >= self.config.MIN_CHARGED_PARTICLES * shower.N_max
+        # ids = shower.profile(self.X) >= self.params.MIN_CHARGED_PARTICLES
+        ids = shower.profile(self.X) >= self.params.MIN_CHARGED_PARTICLES * shower.N_max
         a = self.altitude[::-1]
         self.altitude = a[np.argmax(ids[::-1]):][::-1]
         x = self.X[::-1]
@@ -1140,8 +1138,7 @@ class MakeOverLimbAxis(Axis):
 
     def __init__(self, params: AxisParams):
         self.params = params
-        self.config = AxisConfig()
-        self.atm = self.config.ATM
+        self.atm = self.params.ATM
         self.ground_level = params.ground_level
         self.zenith = params.zenith
         self.azimuth = params.azimuth
@@ -1155,14 +1152,14 @@ class MakeOverLimbAxis(Axis):
     def h(self) -> np.ndarray:
         '''Override heights (z values) as they are all the same.
         '''
-        return np.full(self.config.N_POINTS, self.ground_level)
+        return np.full(self.params.N_POINTS, self.ground_level)
     
     @cached_property
     def r(self) -> np.ndarray:
         '''This calculates the limits on the axis.
         '''
         ra = np.sqrt((self.earth_radius+self.atm.maximum_height)**2 - (self.earth_radius+self.ground_level)**2)
-        return np.linspace(-ra, ra, self.config.N_POINTS)
+        return np.linspace(-ra, ra, self.params.N_POINTS)
     
     @cached_property
     def altitude(self) -> np.ndarray:
@@ -1214,8 +1211,8 @@ class MakeOverLimbAxis(Axis):
         occurs on the axis. We dont need to run universality calculations where
         there's no shower.
         '''
-        # ids = shower.profile(self.X) >= self.config.MIN_CHARGED_PARTICLES
-        ids = shower.profile(self.X) >= self.config.MIN_CHARGED_PARTICLES * shower.N_max
+        # ids = shower.profile(self.X) >= self.params.MIN_CHARGED_PARTICLES
+        ids = shower.profile(self.X) >= self.params.MIN_CHARGED_PARTICLES * shower.N_max
         a = self.altitude[::-1]
         self.altitude = a[np.argmax(ids[::-1]):][::-1]
         x = self.X[::-1]

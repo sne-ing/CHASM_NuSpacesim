@@ -4,7 +4,7 @@ import struct
 import numpy as np
 
 from .eventio_types import EventioType, Float, Double, String, Int, Varint, Varstring, Short, PhotonsData, ThreeByte
-from .config import AxisConfig
+from .user_inputs import AxisParamContainer
 from .simulation import ShowerSimulation, ShowerSignal
 from .axis import Axis, Counters
 from .shower import Shower
@@ -140,14 +140,14 @@ class InputCardData:
 
 def atm_altitudes_km() -> list[Double]:
     '''This gets the altitudes from the axis atmosphere config file'''
-    return [Double(val / 1.e3) for val in AxisConfig().ATM.altitudes.tolist()]
+    return [Double(val / 1.e3) for val in AxisParamContainer().ATM.altitudes.tolist()]
 
 def atm_table() -> list[Double]:
     '''This takes the atmosphere object from config and converts the 
     values into a list in the appropriate order for the eventio 
     block.
     '''
-    atm = AxisConfig().ATM
+    atm = AxisParamContainer().ATM
     atm_array = np.empty((atm.altitudes.size,4))
     atm_array[:,0] = atm.altitudes / 1.e3 #to km
     atm_array[:,1] = atm.density(atm.altitudes) / 1.e3 #to g/cm^3
@@ -163,12 +163,12 @@ class AtmosphericProfileData:
     '''This class contains all the parameters needed to construct a mock CORSIKA
     atmospheric profile block.
     '''
-    name: Varstring = Varstring(AxisConfig().ATM.name)
+    name: Varstring = Varstring(AxisParamContainer().ATM.name)
     obslev: Double = Double(0.)
-    table_size: Varint = Varint(len(AxisConfig().ATM.altitudes.tolist()))
+    table_size: Varint = Varint(len(AxisParamContainer().ATM.altitudes.tolist()))
     altitude_table: list[Double] = field(default_factory=atm_table)
     n_five_layer: Varint = Varint(0)
-    # htoa: Double = Double(AxisConfig().ATM.altitudes.max())
+    # htoa: Double = Double(AxisParamContainer().ATM.altitudes.max())
     # five_layer_atm: list[Double] = field(default_factory=five_layer)
 
 @dataclass
