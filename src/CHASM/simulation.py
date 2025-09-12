@@ -5,6 +5,7 @@ from astropy.table import QTable, Table, Column
 from astropy import units as u
 from dataclasses import dataclass, field, asdict
 from importlib.resources import as_file, files
+import uproot
 
 from .shower import Shower
 from .axis import Axis, Counters, MeshAxis, MeshShower, Timing, Attenuation, MakeSphericalCounters, CurvedAtmCorrection
@@ -624,203 +625,32 @@ def signal_to_astropy(sig: ShowerSignal) -> QTable:
         column_list.append(Column(sig.cos_theta[i].T, name=f'counter {i} cos zenith',unit=u.rad))
     return QTable(column_list)
 
-    # def run(self, mesh: bool = False, att: bool = False):
-    #     '''This is the proprietary run method which creates the arrays of
-    #     Signal, Timing, and Attenuation objects
-    #     '''
-    #     if not self.check_ingredients():
-    #         return None
-    #     self.shower = self.ingredients['shower']
-    #     self.counters = self.ingredients['counters']
-    #     self.y = self.ingredients['yield']
-    #     self.axis = self.ingredients['axis']
-    #     if mesh:
-    #         self.N_lX = len(self.lX_intervals)
-    #         self.signals = np.empty(self.N_lX, dtype = 'O')
-    #         self.times = np.empty_like(self.signals)
-    #         self.attenuations = np.empty_like(self.signals)
-    #         for i, interval in enumerate(self.lX_intervals):
-    #             meshaxis = MeshAxis(interval,self.axis,self.shower)
-    #             meshshower = MeshShower(meshaxis)
-    #             self.signals[i] = Signal(meshshower,meshaxis,self.counters,self.y)
-    #             self.times[i] = meshaxis.get_timing(self.counters)
-    #             self.attenuations[i] = meshaxis.get_attenuation(self.counters,self.y)
-    #             self.N_axis_points = meshaxis.r.size
-    #             self.N_points_at_X = meshaxis.config.N_IN_RING * self.N_lX
-    #     else:
-    #         self.N_lX = 1
-    #         self.signals = np.empty(1, dtype = 'O')
-    #         self.times = np.empty(1, dtype = 'O')
-    #         self.attenuations = np.empty(1, dtype = 'O')
-    #         self.signals[0] = Signal(self.shower,self.axis,self.counters,self.y)
-    #         self.times[0] = self.axis.get_timing(self.counters)
-    #         self.attenuations[0] = self.axis.get_attenuation(self.counters,self.y)
-    #         self.N_axis_points = self.axis.r.size
-    #         self.N_points_at_X = 1
-    #     self.N_c = self.counters.N_counters
-    #     self.N_bunches = self.N_lX * self.N_axis_points
-    #     self.signal_photons = self.get_signal_photons(att)
-    #     self.signal_times = self.get_signal_times()
-    #     self._has_run = True
+def signal_to_root(sig: ShowerSignal, filename: str) -> None:
+    '''This function writes the CHASM output to a root file.
+    '''
+    f = uproot.recreate(filename)
 
-    # def get_photons_array(self, i=0):
-    #     '''This method returns the array of photons going from each step to
-    #     each counter for each wavelength bin.
+    f["Shower"] = {"X": sig.depths, "N": sig.charged_particles}
 
-    #     The returned array is of size:
-    #     # of yield bins, with each entry being on size:
-    #     (# of counters, # of axis points)
-    #     '''
-    #     return self.signals[i].calculate_ng()
+    f["Cherenkov/axis"] = {"x": sig.source_points[:,0],
+                           "y": sig.source_points[:,1],
+                           "z": sig.source_points[:,2]}
+    f["Cherenkov/wavelengths"] = {"wavelengths": sig.wavelengths}
+    f["Cherenkov/detector_positions"] = {"x": sig.counters.vectors[0],
+                                         "y": sig.counters.vectors[1],
+                                         "z": sig.counters.vectors[2]}
+    
+    n_counters, n_wavelengths, _ = np.shape(sig.photons)
 
-    # def get_photons(self, i=0):
-    #     '''This method returns the un-attenuated number of photons going from
-    #     each step to each counter.
+    for j in range(n_counters):
+        signal_dict = {}
+        for k in range(n_wavelengths):
+            signal_dict[f"photons_wl_{sig.wavelengths[k]:.0f}nm"] = sig.photons[j,k]
+        signal_dict[f"times"] = sig.times[j]
+        signal_dict[f"cos_theta"] = sig.cos_theta[j,0,:]
 
-    #     The returned array is of size:
-    #     (# of counters, # of axis points)
-    #     '''
-    #     photons_array = self.get_photons_array(i)
-    #     total_photons = np.zeros_like(photons_array[0])
-    #     for photons in photons_array:
-    #         total_photons += photons
-    #     return total_photons
+        f[f"Cherenkov/detector_{j}_Cherenkov_signal"] = signal_dict
 
-    # def get_photon_sum(self, i=0):
-    #     '''This method returns the un-attenuated total number of photons going
-    #     to each counter.
+    f.close()
+    
 
-    #     The returned array is of size:
-    #     (# of counters)
-    #     '''
-    #     return self.get_photons(i).sum(axis=1)
-
-    # def get_signal_sum(self):
-    #     sum = np.zeros(self.N_c)
-    #     for i_s in range(self.signals.size):
-    #         sum += self.get_photon_sum(i=i_s)
-    #     return sum
-
-    # def get_attenuated_signal_sum(self):
-    #     sum = np.zeros(self.N_c)
-    #     for i_s in range(self.signals.size):
-    #         sum += self.get_attenuated_photon_sum(i=i_s)
-    #     return sum
-
-    # def get_times(self, i=0):
-    #     '''This method returns the time it takes after the shower starts along
-    #     the axis for each photon bin to hit each counter. It is simply calling
-    #     the get_times() method from a specific Timing object.
-
-    #     The size of the returned array is of shape:
-    #     (# of counters, # of axis points)
-    #     '''
-    #     return self.times[i].counter_time()
-
-    # def get_photon_timebins(self, i_counter, t_min, t_max, N_bins):
-    #     '''This method takes the arrival times of photons from each lX axis and
-    #     puths them in the same bins whose edges are defined from t_min to t_max
-    #     in N_bins intervals.
-    #     '''
-    #     hist = np.empty(N_bins)
-    #     for i_s in range(self.signals[:,0].size):
-    #         hist += np.histogram(self.get_times(i=i_s)[i_counter],N_bins,(t_min,t_max),weights=self.get_photons(i=i_s)[i_counter])[0]
-    #     return hist
-
-    # # def get_signal_times(self):
-    # #     '''This method takes the times at which each photon bunch arrives and
-    # #     combines them into one array.
-    # #     '''
-    # #     N_lX = self.signals[:,0].size
-    # #     N_c = self.ingredients['counters'][0].N_counters
-    # #     times_array = np.zeros((N_c, 1))
-    # #     photons_array = np.zeros_like(times_array)
-    # #     for i_s in range(N_lX):
-    # #         times_array = np.append(times_array, self.get_times(i=i_s), axis = 1)
-    # #         photons_array = np.append(photons_array, self.get_photons(i=i_s), axis = 1)
-    # #     return times_array, photons_array
-
-    # def get_signal_photons(self, att = False) -> np.ndarray:
-    #     '''This method takes the photon counts from each step from each shower
-    #     axis object and combines them into a single array.
-    #     '''
-    #     photons_array = np.empty((self.N_c,self.N_bunches))
-    #     i_s = 0
-    #     for i_a in range(self.N_lX):
-    #         if att:
-    #             photons_array[:,i_s:i_s+self.N_axis_points] = self.get_attenuated_photons(i=i_a)
-    #         else:
-    #             photons_array[:,i_s:i_s+self.N_axis_points] = self.get_photons(i=i_a)
-    #         i_s += self.N_axis_points
-    #     return photons_array
-
-    # def total_ng_at_X(self) -> np.ndarray:
-    #     '''This method returns the total number of photons going to each detector
-    #     from each step in grammage.
-    #     '''
-    #     ng = np.empty_like(self.axis.X)
-    #     iX = 0
-    #     for i in range(ng.size):
-    #         ng[i] = self.signal_photons[:,iX:iX+self.N_points_at_X].sum()
-    #         iX += self.N_points_at_X
-    #     return ng
-
-    # def get_signal_times(self) -> np.ndarray:
-    #     '''This method takes the arrival times of photon bunches from each step
-    #     from each shower axis object and combines them into a single array.
-    #     '''
-    #     times_array = np.empty((self.N_c,self.N_bunches))
-    #     i_s = 0
-    #     for i_a in range(self.N_lX):
-    #         times_array[:,i_s:i_s+self.N_axis_points] = self.get_times(i=i_a)
-    #         i_s += self.N_axis_points
-    #     return times_array
-
-    # # def get_attenuated_signal_times(self):
-    # #     '''This method takes the times at which each photon bunch arrives and
-    # #     combines them into one array.
-    # #     '''
-    # #     times_array = np.zeros(self.N_c)
-    # #     photons_array = np.zeros_like(times_array)
-    # #     for i_s in range(self.N_lX):
-    # #         times_array = np.append(times_array, self.get_times(i=i_s), axis = 1)
-    # #         photons_array = np.append(photons_array, self.get_attenuated_photons(i=i_s), axis = 1)
-    # #     return times_array, photons_array
-
-    # def get_attenuated_photons_array(self, i=0):
-    #     '''This method returns the attenuated number of photons going from each
-    #     step to each counter.
-
-    #     The returned array is of size:
-    #     # of yield bins, with each entry being on size:
-    #     (# of counters, # of axis points)
-    #     '''
-    #     fraction_array = self.attenuations[i].fraction_passed()
-    #     photons_array = self.get_photons_array(i)
-    #     attenuated_photons = np.zeros_like(photons_array)
-    #     for i_a, (photons, fractions) in enumerate(zip(photons_array, fraction_array)):
-    #         attenuated_photons[i_a] = photons * fractions
-    #     return attenuated_photons
-
-    # def get_attenuated_photons(self, i=0):
-    #     '''This method returns the attenuated number of photons going from each
-    #     step to each counter.
-
-    #     The returned array is of size:
-    #     (# of counters, # of axis points)
-    #     '''
-    #     fraction_array = self.attenuations[i].fraction_passed()
-    #     photons_array = self.get_photons_array(i)
-    #     attenuated_photons = np.zeros_like(photons_array[0])
-    #     for photons, fractions in zip(photons_array, fraction_array):
-    #         attenuated_photons += photons * fractions
-    #     return attenuated_photons
-
-    # def get_attenuated_photon_sum(self, i=0):
-    #     '''This method returns the attenuated total number of photons going to
-    #     each counter.
-
-    #     The returned array is of size:
-    #     (# of counters)
-    #     '''
-    #     return self.get_attenuated_photons(i).sum(axis=1)

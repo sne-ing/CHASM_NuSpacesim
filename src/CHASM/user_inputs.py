@@ -84,6 +84,19 @@ class UserShower:
         return MakeUserShower(self.X, self.Nch)
 
 @dataclass
+class GreisenShower:
+    '''This is the GH shower ingredient parameter container/factory'''
+    X_max: float
+    N_max: float
+    X0: float
+    Lambda: float
+    element_type: str = field(init=False, default='shower', repr=False)
+
+    def create(self) -> MakeGHShower:
+        '''This method returns an instantiated Gaisser Hillas Shower '''
+        return MakeGreisenShower(self.X_max, self.N_max, self.X0, self.Lambda)
+
+@dataclass
 class CountersParamsContainer:
     '''Different counter types take the same params'''
     vectors: np.ndarray

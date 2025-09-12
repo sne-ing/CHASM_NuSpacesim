@@ -356,6 +356,10 @@ class AxisParams(Protocol):
     def maximum_altitude(self) -> float:
         ...
 
+    @property
+    def ATM(self) -> Atmosphere:
+        ...
+
 
 class Axis(ABC):
     '''This is the abstract base class which contains the methods for computing
