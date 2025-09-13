@@ -719,7 +719,7 @@ def axis_to_mesh(lX: float, axis: Axis, shower: Shower, N_ring: int = 20) -> tup
     '''
     X = np.exp(lX) #number of moliere units for the radius of the ring
     X_to_m = X * axis.moliere_radius
-    X_to_m[X_to_m>axis.config.MAX_RING_SIZE] = axis.config.MAX_RING_SIZE
+    X_to_m[X_to_m>axis.params.MAX_RING_SIZE] = axis.params.MAX_RING_SIZE
     axis_t = shower.stage(axis.X)
     total_nch = shower.profile(axis.X) * LateralSpread.nch_fractions(axis_t,lX)
     axis_d = axis.delta
@@ -1084,8 +1084,8 @@ class MakeDownwardAxisFlatPlanarAtm(MakeDownwardAxis):
     def get_gg_file(self) -> str:
         '''This method returns the original gg array file.
         '''
-        return 'gg_t_delta_theta_2020_normalized.npz'
-        # return 'gg_t_delta_theta_mc.npz'
+        # return 'gg_t_delta_theta_2020_normalized.npz'
+        return 'gg_t_delta_theta_mc.npz'
         # return 'gg_t_delta_theta_lX_-2_to_-1.npz'
     
     def get_curved_atm_correction_class(self) -> CurvedAtmCorrection:

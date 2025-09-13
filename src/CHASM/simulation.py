@@ -493,7 +493,7 @@ class ShowerSimulation:
         '''This property is the total number of Cherenkov photon sample points
         when the mesh option is used.
         '''
-        return self.axis.config.N_IN_RING * self.axis.r.size * len(self.lX_intervals)
+        return self.axis.params.N_IN_RING * self.axis.r.size * len(self.lX_intervals)
 
     @staticmethod
     def get_attenuated_photons_array(signal: Signal, curved_correction: CurvedAtmCorrection):
@@ -516,7 +516,7 @@ class ShowerSimulation:
         '''This method returns a ShowerSignal object with the photons calculated
         using mesh sampling.
         '''
-        N_axis_points = self.axis.config.N_IN_RING * self.axis.r.size
+        N_axis_points = self.axis.params.N_IN_RING * self.axis.r.size
         axis_vectors = np.empty((len(self.lX_intervals), N_axis_points, 3))
         photons_array = np.empty((self.N_c, len(self.y), len(self.lX_intervals), N_axis_points))
         cQ_array = np.empty((self.N_c, len(self.y), len(self.lX_intervals), N_axis_points))
