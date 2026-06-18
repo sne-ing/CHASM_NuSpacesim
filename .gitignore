@@ -40,3 +40,8 @@ CHASM_*_output/
 # Generated exports
 *.pdf
 *.html
+
+# SLURM logs
+logs/
+*.out
+*.err
