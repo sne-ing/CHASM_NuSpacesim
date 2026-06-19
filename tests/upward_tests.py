@@ -9,10 +9,10 @@ from scipy.spatial.transform import Rotation as R
 zenith = np.radians(85)
 azimuth = 0.
 sim = ch.ShowerSimulation()
-sim.add(ch.UpwardAxis(zenith,azimuth,curved=True))
+sim.add(ch.UpwardAxis(zenith,azimuth,curved=True,N_POINTS=1000))
 
 #add grid of detectors
-n_side = 50
+n_side = 20
 grid_width = 100000.
 detector_grid_alt = 525. #km
 
@@ -47,10 +47,10 @@ sim.add(ch.UserShower(X,nch))
 # sim.add(ch.GHShower(xmax,nmax,x0,Lambda))
 
 #add wavelength yield interval
-sim.add(ch.Yield(270,1000,N_bins=1))
+sim.add(ch.Yield(270,1000,N_bins=3))
 
 #run simulation
-sig = sim.run(mesh=False, att=True)
+sig = sim.run(mesh=False, att=False)
 
 #plot signal at each detector
 fig = plt.figure()
@@ -64,3 +64,16 @@ plt.ylabel('Counter Plane Y-axis (km)')
 ax = plt.gca()
 ax.set_aspect('equal')
 plt.colorbar(label = 'Number of Cherenkov Photons / m^2')
+
+plt.figure()
+
+all_times = sig.times
+all_photons = sig.photons.sum(axis=1) #sum over wavelengths
+imax = all_photons.sum(axis=1).argmax()
+times = all_times[imax]
+photons = all_photons[imax]
+i = photons > .01
+
+ha = plt.hist(times[i],50, weights=photons[i], histtype='step',label='correction',color='r')
+
+ch.signal_to_root(sig,"test.root")

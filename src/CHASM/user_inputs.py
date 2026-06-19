@@ -3,18 +3,26 @@ from dataclasses import dataclass, field
 from .axis import *
 from .generate_Cherenkov import MakeYield
 from .shower import *
+from .atmosphere import *
+# from .config import *
 
 @dataclass
 class AxisParamContainer:
     '''This is the base class for axis params since both upward
     and downward axes have the same parameters.
     '''
-    zenith: float
-    azimuth: float
+    zenith: float = np.radians(45.)
+    azimuth: float = 0.
     ground_level: float = 0.
     curved: bool = False
     element_type: str = field(init=False, default='axis', repr=False)
     maximum_altitude: float = 84852
+    N_POINTS: int = 1000
+    N_IN_RING: int = 3
+    MIN_CHARGED_PARTICLES: float = 1.e-4 #number of charged particles for a step to be considered in cherenkov calcs as a fraction of Nmax
+    ATM: Atmosphere = CorsikaAtmosphere()
+    # ATM: Atmosphere = USStandardAtmosphere()
+    MAX_RING_SIZE: float = 300.
 
 @dataclass
 class DownwardAxis(AxisParamContainer):
@@ -74,6 +82,19 @@ class UserShower:
     def create(self) -> MakeUserShower:
         '''This method returns an instantiated user shower '''
         return MakeUserShower(self.X, self.Nch)
+
+@dataclass
+class GreisenShower:
+    '''This is the GH shower ingredient parameter container/factory'''
+    X_max: float
+    N_max: float
+    X0: float
+    Lambda: float
+    element_type: str = field(init=False, default='shower', repr=False)
+
+    def create(self) -> MakeGHShower:
+        '''This method returns an instantiated Gaisser Hillas Shower '''
+        return MakeGreisenShower(self.X_max, self.N_max, self.X0, self.Lambda)
 
 @dataclass
 class CountersParamsContainer:

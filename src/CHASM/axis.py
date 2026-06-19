@@ -12,7 +12,6 @@ from functools import cached_property
 from .atmosphere import Atmosphere
 from .generate_Cherenkov import MakeYield
 from .shower import Shower
-from .config import AxisConfig
 
 class Counters(ABC):
     '''This is the class containing the neccessary methods for finding the
@@ -357,6 +356,10 @@ class AxisParams(Protocol):
     def maximum_altitude(self) -> float:
         ...
 
+    @property
+    def ATM(self) -> Atmosphere:
+        ...
+
 
 class Axis(ABC):
     '''This is the abstract base class which contains the methods for computing
@@ -368,8 +371,7 @@ class Axis(ABC):
 
     def __init__(self, params: AxisParams):
         self.params = params
-        self.config = AxisConfig()
-        self.atm = self.config.ATM
+        self.atm = self.params.ATM
         self.ground_level = params.ground_level
         self.zenith = params.zenith
         self.azimuth = params.azimuth
@@ -418,7 +420,7 @@ class Axis(ABC):
 
     def set_initial_altitude(self) -> np.ndarray:
         '''altitude property definition'''
-        return np.linspace(self.ground_level, self.maximum_altitude, self.config.N_POINTS)
+        return np.linspace(self.ground_level, self.maximum_altitude, self.params.N_POINTS)
 
     @property
     def dh(self) -> np.ndarray:
@@ -494,9 +496,12 @@ class Axis(ABC):
         if input_vectors.shape[1] != 3 or len(input_vectors.shape) != 2:
             raise ValueError("Input is not an array of vectors.")
         
-        rxy = np.sqrt(input_vectors[:,0]**2 + input_vectors[:,1]**2)
-        return np.sqrt(rxy**2 + (self.earth_radius + self.ground_level)**2) - self.earth_radius
+        vector_r = vector_magnitude(input_vectors)
+        h0tocore = self.earth_radius + self.ground_level
+        theta = np.arcsin(input_vectors[:,2]/vector_r) + np.pi / 2
 
+        h_plus_R_e2 = vector_r**2 + h0tocore**2 - 2 * vector_r * h0tocore * np.cos(theta)
+        return np.sqrt(h_plus_R_e2) - self.earth_radius
 
     @property
     def theta_difference(self) -> np.ndarray:
@@ -714,7 +719,7 @@ def axis_to_mesh(lX: float, axis: Axis, shower: Shower, N_ring: int = 20) -> tup
     '''
     X = np.exp(lX) #number of moliere units for the radius of the ring
     X_to_m = X * axis.moliere_radius
-    X_to_m[X_to_m>axis.config.MAX_RING_SIZE] = axis.config.MAX_RING_SIZE
+    X_to_m[X_to_m>axis.params.MAX_RING_SIZE] = axis.params.MAX_RING_SIZE
     axis_t = shower.stage(axis.X)
     total_nch = shower.profile(axis.X) * LateralSpread.nch_fractions(axis_t,lX)
     axis_d = axis.delta
@@ -761,10 +766,12 @@ class MeshAxis(Axis):
     lXs = np.arange(-6,0) #Log moliere radii corresponding to the bin edges of the tabulated gg files.
 
     def __init__(self, lX_interval: tuple, linear_axis: Axis, shower: Shower):
+        if isinstance(linear_axis, MakeOverLimbAxis):
+            raise(ValueError("Mesh doesn't work for over the limb."))
         self.lX_interval = lX_interval
         self.lX = np.mean(lX_interval)
         self.linear_axis = linear_axis
-        self.config = linear_axis.config
+        self.params = linear_axis.params
         self.atm = linear_axis.atm
         self.zenith = linear_axis.zenith
         self.azimuth = linear_axis.azimuth
@@ -773,8 +780,8 @@ class MeshAxis(Axis):
         mesh, self.nch, self._t, self._d, self._dr, self._a  = axis_to_mesh(self.lX, 
                                                                             self.linear_axis, 
                                                                             self.shower,
-                                                                            N_ring=self.config.N_IN_RING)
-        self.meshX = np.repeat(self.X,self.config.N_IN_RING)
+                                                                            N_ring=self.params.N_IN_RING)
+        self.meshX = np.repeat(self.X,self.params.N_IN_RING)
         self.rotated_mesh = rotate_mesh(mesh, linear_axis.zenith, linear_axis.azimuth)
 
     @property
@@ -929,8 +936,8 @@ class MakeUpwardAxis(Axis):
         occurs on the axis. We dont need to run universality calculations where
         there's no shower.
         '''
-        # ids = shower.profile(self.X) >= self.config.MIN_CHARGED_PARTICLES
-        ids = shower.profile(self.X) >= self.config.MIN_CHARGED_PARTICLES * shower.N_max
+        # ids = shower.profile(self.X) >= self.params.MIN_CHARGED_PARTICLES
+        ids = shower.profile(self.X) >= self.params.MIN_CHARGED_PARTICLES * shower.N_max
         self.altitude = self.altitude[np.argmax(ids):]
         self.X = self.X[np.argmax(ids):]
 
@@ -993,11 +1000,13 @@ class MakeUpwardAxisCurvedAtm(MakeUpwardAxis):
     def get_timing_class(self) -> Timing:
         '''This method returns the upward flat atm timing class'''
         return UpwardTimingCurved
+        # return OverLimbTiming
 
     def get_attenuation_class(self) -> Attenuation:
         '''This method returns the flat atmosphere attenuation object for upward
         axes'''
         return UpwardAttenuationCurved
+        # return OverLimbAttenuation
 
     def get_gg_file(self) -> str:
         '''This method returns the original gg array file.
@@ -1006,6 +1015,7 @@ class MakeUpwardAxisCurvedAtm(MakeUpwardAxis):
     
     def get_curved_atm_correction_class(self) -> CurvedAtmCorrection:
         return UpwardCurvedCorrection
+        # return OverLimbCurvedCorrection
 
 class MakeDownwardAxis(Axis):
     '''This is the implementation of an axis for a downward going shower'''
@@ -1035,8 +1045,8 @@ class MakeDownwardAxis(Axis):
         occurs on the axis. We dont need to run universality calculations where
         there's no shower.self
         '''
-        # ids = shower.profile(self.X) >= self.config.MIN_CHARGED_PARTICLES
-        ids = shower.profile(self.X) >= self.config.MIN_CHARGED_PARTICLES * shower.N_max
+        # ids = shower.profile(self.X) >= self.params.MIN_CHARGED_PARTICLES
+        ids = shower.profile(self.X) >= self.params.MIN_CHARGED_PARTICLES * shower.N_max
         a = self.altitude[::-1]
         self.altitude = a[np.argmax(ids[::-1]):][::-1]
         x = self.X[::-1]
@@ -1074,6 +1084,7 @@ class MakeDownwardAxisFlatPlanarAtm(MakeDownwardAxis):
     def get_gg_file(self) -> str:
         '''This method returns the original gg array file.
         '''
+        # return 'gg_t_delta_theta_2020_normalized.npz'
         return 'gg_t_delta_theta_mc.npz'
         # return 'gg_t_delta_theta_lX_-2_to_-1.npz'
     
@@ -1131,8 +1142,7 @@ class MakeOverLimbAxis(Axis):
 
     def __init__(self, params: AxisParams):
         self.params = params
-        self.config = AxisConfig()
-        self.atm = self.config.ATM
+        self.atm = self.params.ATM
         self.ground_level = params.ground_level
         self.zenith = params.zenith
         self.azimuth = params.azimuth
@@ -1146,14 +1156,14 @@ class MakeOverLimbAxis(Axis):
     def h(self) -> np.ndarray:
         '''Override heights (z values) as they are all the same.
         '''
-        return np.full(self.config.N_POINTS, self.ground_level)
+        return np.full(self.params.N_POINTS, self.ground_level)
     
     @cached_property
     def r(self) -> np.ndarray:
         '''This calculates the limits on the axis.
         '''
         ra = np.sqrt((self.earth_radius+self.atm.maximum_height)**2 - (self.earth_radius+self.ground_level)**2)
-        return np.linspace(-ra, ra, self.config.N_POINTS)
+        return np.linspace(-ra, ra, self.params.N_POINTS)
     
     @cached_property
     def altitude(self) -> np.ndarray:
@@ -1205,8 +1215,8 @@ class MakeOverLimbAxis(Axis):
         occurs on the axis. We dont need to run universality calculations where
         there's no shower.
         '''
-        # ids = shower.profile(self.X) >= self.config.MIN_CHARGED_PARTICLES
-        ids = shower.profile(self.X) >= self.config.MIN_CHARGED_PARTICLES * shower.N_max
+        # ids = shower.profile(self.X) >= self.params.MIN_CHARGED_PARTICLES
+        ids = shower.profile(self.X) >= self.params.MIN_CHARGED_PARTICLES * shower.N_max
         a = self.altitude[::-1]
         self.altitude = a[np.argmax(ids[::-1]):][::-1]
         x = self.X[::-1]
@@ -1217,12 +1227,13 @@ class MakeOverLimbAxis(Axis):
         self.h = h[np.argmax(ids[::-1]):][::-1]
 
     def get_curved_atm_correction_class(self) -> CurvedAtmCorrection:
-        return DownwardCurvedCorrection
+        return OverLimbCurvedCorrection
     
     def get_timing_class(self) -> Timing:
         '''This method returns the flat atm downward timing class
         '''
-        return DownwardTimingCurved
+        # return DownwardTimingCurved
+        return OverLimbTiming
     
     def get_attenuation_class(self) -> Attenuation:
         '''This method returns the curved atmosphere attenuation object for downward
@@ -1289,10 +1300,49 @@ class OverLimbCurvedCorrection(CurvedAtmCorrection):
         self.cQd = np.cos(axis.theta_difference)
         self.sQd = np.sin(axis.theta_difference)
         self.Q = np.arccos(self.cQ)
+        self.dls_list = []
+        self.sample_altitudes_list = []
+        for j in range(self.axis.vectors.shape[0]):
+            interval_samples = self.interval_samples(self.axis.vectors[j])
+            samplehs, dls = self.calculate_point_to_counters(interval_samples)
+            self.dls_list.append(dls)
+            self.sample_altitudes_list.append(samplehs)
 
-    def curved_correction(self, vert: np.ndarray) -> np.ndarray:
-        '''This is the integration.
+    def interval_samples(self, start: np.ndarray, sample_length: float = 100000.) -> np.ndarray:
+        ''' This method calculates vectors to points along the optical path 
+        of light beginning at start and ending at each counter.
         '''
+        longest_vector = vector_magnitude(self.counters.vectors - start).max()
+        n_samples = np.round(longest_vector/(sample_length)).astype('int')
+        if n_samples < 3:
+            n_samples = 3
+        return np.linspace(start, self.counters.vectors, n_samples*2 + 1)
+
+    def calculate_point_to_counters(self, sample_vectors: np.ndarray) -> np.ndarray:
+        '''This method calculates the altitudes and path lengths for one set of optical path
+        samples. The sample vectors are of shape (nsamples, ncounters, 3)
+        '''
+        n_intervals = int(.5 * (sample_vectors.shape[0] - 1))
+        sample_altitudes = np.empty((n_intervals, sample_vectors.shape[1]))
+        dl = np.empty(sample_vectors.shape[1])
+        for i in range(sample_vectors.shape[1]):
+            sample_altitudes[:,i] = self.axis.vector_altitude(sample_vectors[1:-1:2,i,:])
+            dl[i] = vector_magnitude(sample_vectors[2,i,:] - sample_vectors[0,i,:])
+        return sample_altitudes, dl
+    
+    def curved_correction(self, vert: np.ndarray) -> np.ndarray:
+        '''This is the integration. Not used in this case.
+        '''
+        integrals = np.empty_like(self.Q)
+        for i in range(integrals.shape[1]):
+            test_Q = np.linspace(self.Q[:,i].min(), self.Q[:,i].max(), 5)
+            test_cQ = np.cos(test_Q)
+            test_sQ = np.sin(test_Q)
+            t1 = test_cQ[:,np.newaxis] * self.cQd[:i] #these next three lines are what's different for up vs down
+            t2 = test_sQ[:,np.newaxis] * self.sQd[:i]
+            test_integrals = np.sum(vert[:i] / (t1 + t2), axis = 1)
+            integrals[:,i] = np.interp(self.Q[:,i], test_Q, test_integrals)
+        return integrals
 
 class NoCurvedCorrection(CurvedAtmCorrection):
     '''This class is does nothing but pass the axis and counters object.
@@ -1519,6 +1569,35 @@ class UpwardTimingCurved(Timing):
         return self.curved_correction(vsd)
         # return upward_curved_correction(self.axis, self.counters, vsd)
 
+class OverLimbTiming(Timing):
+    '''This is the implementation of timing for over the limb showers. Atmospheric
+    curveature is calculated directly.
+    '''
+    def __init__(self, curved_correction: OverLimbCurvedCorrection):
+        self.curved_correction = curved_correction
+        self.axis = curved_correction.axis
+        self.counters = curved_correction.counters
+
+    @property
+    def axis_time(self) -> np.ndarray:
+        '''This is the implementation of the axis time property
+
+        This method calculates the time it takes the shower (moving at c) to
+        progress to each point on the axis
+
+        The size of the returned array is of size: (# of axis points,)
+        '''
+        return -self.axis.r / self.c / nano
+
+    def delay(self) -> np.ndarray:
+        delay = np.empty((self.counters.N_counters,self.axis.vectors.shape[0]))
+        for j in range(self.axis.vectors.shape[0]):
+            deltas = self.axis.atm.delta(self.curved_correction.sample_altitudes_list[j])
+            dls = self.curved_correction.dls_list[j]
+            delay[:,j] = (deltas * dls).sum(axis=0) / self.c / nano
+        print(delay.max())
+        return delay
+
 class DownwardAttenuation(Attenuation):
     '''This is the implementation of signal attenuation for an downward going air
     shower with a flat atmosphere.
@@ -1634,12 +1713,58 @@ class OverLimbAttenuation(Attenuation):
     '''This is the implementation of signal attenuation for an over the limb air
     shower.
     '''
-    def __init__(self, curved_correction: CurvedAtmCorrection, yield_array: np.ndarray):
+    def __init__(self, curved_correction: OverLimbCurvedCorrection, yield_array: np.ndarray):
         self.curved_correction = curved_correction
         self.axis = curved_correction.axis
         self.counters = curved_correction.counters
         self.yield_array = yield_array
         self.atm = self.axis.atm
+
+    def attenuation_interval_samples(self, start: np.ndarray, sample_length: float = 100000.) -> np.ndarray:
+        ''' This method calculates vectors to points along the optical path 
+        of light beginning at start and ending at each counter.
+        '''
+        longest_vector = vector_magnitude(self.counters.vectors - start).max()
+        n_samples = np.round(longest_vector/(sample_length)).astype('int')
+        if n_samples < 3:
+            n_samples = 3
+        return np.linspace(start, self.counters.vectors, n_samples*2 + 1)
+
+    def calculate_point_to_counters(self, sample_vectors: np.ndarray, l: float) -> np.ndarray:
+        '''This method calculates the log fractions for one set of optical path
+        samples. The sample vectors are of shape (nsamples, ncounters, 3)
+        '''
+        n_intervals = int(.5 * (sample_vectors.shape[0] - 1))
+        sample_altitudes = np.empty((n_intervals, sample_vectors.shape[1]))
+        dh = np.empty(sample_vectors.shape[1])
+        for i in range(sample_vectors.shape[1]):
+            sample_altitudes[:,i] = self.axis.vector_altitude(sample_vectors[1:-1:2,i,:])
+            dh[i] = vector_magnitude(sample_vectors[2,i,:] - sample_vectors[0,i,:])
+        N = self.atm.number_density(sample_altitudes) / 1.e6
+        cs = self.rayleigh_cs(sample_altitudes,l)
+        dh *= 1.e2
+        lfps = -N*cs*dh
+        return lfps.sum(axis=0)
+
+
+    # def log_fraction_passed(self) -> np.ndarray:
+    #     '''This method returns the natural log of the fraction of light
+    #     originating at each step on the axis which survives to reach the
+    #     counter.
+
+    #     The size of the returned array is of shape:
+    #     # of yield bins, with each entry being on size:
+    #     (# of counters, # of axis points)
+    #     '''
+    #     lfp_array = np.empty_like(self.yield_array, dtype='O')
+    #     for i, y in enumerate(self.yield_array):
+    #         lfp = np.empty((self.counters.N_counters, self.axis.vectors.shape[0]))
+    #         for j in range(self.axis.vectors.shape[0]):
+    #             sample_vectors = self.attenuation_interval_samples(self.axis.vectors[j])
+    #             lfp[:,j] = self.calculate_point_to_counters(sample_vectors, y.l_mid)
+    #         lfp_array[i] = lfp
+    #     print(lfp_array[0].min())
+    #     return lfp_array
 
     def log_fraction_passed(self) -> np.ndarray:
         '''This method returns the natural log of the fraction of light
@@ -1650,14 +1775,34 @@ class OverLimbAttenuation(Attenuation):
         # of yield bins, with each entry being on size:
         (# of counters, # of axis points)
         '''
-        counter_altitudes = self.axis.vector_altitude(self.counters.vectors)
         lfp_array = np.empty_like(self.yield_array, dtype='O')
         for i, y in enumerate(self.yield_array):
-            ecoeffs = self.ecoeff[np.abs(y.l_mid-self.l_list).argmin()]
-            e_of_counter_h = np.interp(counter_altitudes, self.altitude_list, ecoeffs)
-            e_of_axis_h = np.interp(self.axis.altitude, self.altitude_list, ecoeffs)
-            frac_surviving = np.abs(np.exp(-e_of_counter_h)[:,np.newaxis] - np.exp(-e_of_axis_h))
-            print(frac_surviving.min())
-            frac_surviving /= self.curved_correction.cQ
-            lfp_array[i] = np.log(frac_surviving)
+            lfp = np.empty((self.counters.N_counters, self.axis.vectors.shape[0]))
+            for j in range(self.axis.vectors.shape[0]):
+                N = self.atm.number_density(self.curved_correction.sample_altitudes_list[j]) / 1.e6
+                cs = self.rayleigh_cs(self.curved_correction.sample_altitudes_list[j],y.l_mid)
+                dl = self.curved_correction.dls_list[j] * 1.e2
+                lfp[:,j] = (-N*cs*dl).sum(axis=0)
+            lfp_array[i] = lfp
         return lfp_array
+    
+    # def log_fraction_passed(self) -> np.ndarray:
+    #     '''This method returns the natural log of the fraction of light
+    #     originating at each step on the axis which survives to reach the
+    #     counter.
+
+    #     The size of the returned array is of shape:
+    #     # of yield bins, with each entry being on size:
+    #     (# of counters, # of axis points)
+    #     '''
+    #     counter_altitudes = self.axis.vector_altitude(self.counters.vectors)
+    #     lfp_array = np.empty_like(self.yield_array, dtype='O')
+    #     for i, y in enumerate(self.yield_array):
+    #         ecoeffs = self.ecoeff[np.abs(y.l_mid-self.l_list).argmin()]
+    #         e_of_counter_h = np.interp(counter_altitudes, self.altitude_list, ecoeffs)
+    #         e_of_axis_h = np.interp(self.axis.altitude, self.altitude_list, ecoeffs)
+    #         frac_surviving = np.abs(np.exp(-e_of_counter_h)[:,np.newaxis] - np.exp(-e_of_axis_h))
+    #         print(frac_surviving.min())
+    #         frac_surviving /= self.curved_correction.cQ
+    #         lfp_array[i] = np.log(frac_surviving)
+    #     return lfp_array

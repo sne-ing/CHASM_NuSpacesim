@@ -5,7 +5,7 @@ class Shower(ABC):
     '''This is the abstract class containing the needed methods for creating
     a shower profile
     '''
-    # X0 = 0. #Default value for X0
+    X0 = 36.62 #Default value for X0
 
     @property
     def X_max(self):
@@ -31,15 +31,19 @@ class Shower(ABC):
             raise ValueError("N_max must be positive")
         self._N_max = N_max
 
-    @property
-    def X0(self):
-        '''X0 getter'''
-        return self._X0
+    # @property
+    # def X0(self):
+    #     '''X0 getter'''
+    #     return self._X0
 
-    @X0.setter
-    def X0(self, X0):
-        '''X0 property setter'''
-        self._X0 = X0
+    # @X0.setter
+    # def X0(self, X0):
+    #     '''X0 property setter'''
+    #     self._X0 = X0
+
+    @property
+    def tmax(self) -> float:
+        return self.X_max / self.X0
 
     def stage(self, X, X0=36.62):
         '''returns stage as a function of shower depth'''
@@ -165,3 +169,17 @@ class MakeUserShower(Shower):
             N: the shower size
         """
         return np.interp(X, self.input_X, self.input_Nch, left = 0., right = 0.)
+
+class MakeGreisenShower(Shower):
+    """This is the Greisen parameterization of an EAS profile.
+    """
+    def __init__(self, X_max: float, N_max: float, X0: float, Lambda: float):
+        self.X_max = X_max
+        self.N_max = N_max
+        self.X0 = X0
+        self.Lambda = Lambda
+
+    def profile(self, X: np.ndarray) -> np.ndarray:
+        t = X / self.X0
+        s = self.age(X)
+        return self.N_max * np.exp(t * (1 - 1.5 * np.log(s)) - self.tmax)
