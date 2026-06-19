@@ -45,3 +45,11 @@ CHASM_*_output/
 logs/
 *.out
 *.err
+
+# Local Python virtual environment
+.venv/
+
+
+# Personal local notes
+Powershell commands.txt
+
